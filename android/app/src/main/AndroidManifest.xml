@@ -1,23 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ==================== CÁC QUYỀN NATIVE (PERMISSIONS) ==================== -->
-    <!-- 1. Quyền Mạng (Internet & Trạng thái mạng cho Auto-Sync) -->
+    <!-- 1. Quyền kết nối Mạng -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- 2. Quyền Camera & Lưu ảnh chụp vào Thư viện (Gallery) -->
+    <!-- 2. Quyền Chụp ảnh & Thư viện ảnh -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
-    <!-- 3. Quyền Định vị GPS (Tọa độ khảo sát) -->
+    <!-- 3. Quyền Định vị GPS -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- 4. Quyền Gửi Thông báo Local Notification (Android 13+) -->
+    <!-- 4. Quyền Thông báo Local Notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- ========================================================================= -->
 
     <application
         android:allowBackup="true"
@@ -49,8 +48,9 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"></meta-data>
+                android:resource="@xml/file_paths" />
         </provider>
+
     </application>
 
 </manifest>

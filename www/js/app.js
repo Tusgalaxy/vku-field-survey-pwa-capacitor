@@ -25,18 +25,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 2. Theo dõi kết nối Mạng Native với @capacitor/network
   async function initNetworkMonitoring() {
-    // Lấy trạng thái mạng ban đầu
-    const status = await Network.getStatus();
-    updateOnlineUI(status.connected);
-
-    // Lắng nghe sự kiện thay đổi kết nối mạng
-    Network.addListener('networkStatusChange', (status) => {
+    try {
+      const status = await Network.getStatus();
       updateOnlineUI(status.connected);
-      if (status.connected) {
-        console.log("Đã phát hiện có mạng trở lại! Tiến hành Auto-Sync...");
-        syncToGoogleSheets(true);
-      }
-    });
+
+      Network.addListener('networkStatusChange', (status) => {
+        updateOnlineUI(status.connected);
+        if (status.connected) {
+          console.log("Đã phát hiện có mạng trở lại! Tiến hành Auto-Sync...");
+          syncToGoogleSheets(true);
+        }
+      });
+    } catch (err) {
+      console.warn("Lỗi kiểm tra Network Native, dùng window events fallback:", err);
+      updateOnlineUI(navigator.onLine);
+      window.addEventListener('online', () => { updateOnlineUI(true); syncToGoogleSheets(true); });
+      window.addEventListener('offline', () => updateOnlineUI(false));
+    }
   }
 
   function updateOnlineUI(isOnline) {
@@ -66,13 +71,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 4. Chụp ảnh & Tự động lưu vào Gallery với @capacitor/camera
+  // 4. Chụp ảnh & Tự động lưu vào Gallery với @capacitor/camera (Đã bổ sung Request Permission)
   const nativeCameraBtn = document.getElementById('native-camera-btn');
   if (nativeCameraBtn) {
     nativeCameraBtn.addEventListener('click', async () => {
       try {
+        // Chủ động xin quyền Camera và Lưu trữ ảnh trên thiết bị
+        const permStatus = await Camera.requestPermissions();
+        if (permStatus.camera === 'denied' || permStatus.photos === 'denied') {
+          alert("Vui lòng cho phép quyền Camera và Bộ nhớ để chụp và lưu ảnh!");
+          return;
+        }
+
         const image = await Camera.getPhoto({
-          quality: 85,
+          quality: 75, // Nén ảnh xuống 75 để giảm tải khi upload
           allowEditing: false,
           resultType: CameraResultType.Base64,
           source: CameraSource.Camera,
@@ -81,13 +93,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         nativePhotoBase64 = `data:image/jpeg;base64,${image.base64String}`;
         
-        // Cập nhật giao diện Preview ảnh nếu có thẻ img preview
         const photoPreview = document.getElementById('photo-preview');
         if (photoPreview) {
           photoPreview.src = nativePhotoBase64;
           photoPreview.classList.remove('hidden');
         }
-        alert("Đã chụp và lưu ảnh vào Bộ sưu tập thiết bị!");
+        alert("Đã chụp và lưu ảnh thành công vào Bộ sưu tập thiết bị!");
       } catch (error) {
         console.log("Hủy chụp hoặc lỗi Camera:", error);
       }
@@ -115,10 +126,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 6. Hàm đồng bộ dữ liệu lên Google Sheets
+  // 6. Hàm đồng bộ dữ liệu lên Google Sheets (Fix lỗi gửi payload trên Native WebView)
   async function syncToGoogleSheets(isAuto = false) {
-    const status = await Network.getStatus();
-    if (!status.connected) {
+    let isOnline = true;
+    try {
+      const status = await Network.getStatus();
+      isOnline = status.connected;
+    } catch (e) {
+      isOnline = navigator.onLine;
+    }
+
+    if (!isOnline) {
       if (!isAuto) alert("Không có mạng! Vui lòng kết nối Internet để đồng bộ.");
       return;
     }
@@ -135,17 +153,34 @@ document.addEventListener('DOMContentLoaded', () => {
     let successCount = 0;
     for (const item of unsyncedList) {
       try {
+        // Cách 1: Gửi dạng URLSearchParams mã hóa form
+        const params = new URLSearchParams();
+        params.append('data', JSON.stringify(item));
+
         await fetch(GOOGLE_SHEET_API_URL, {
           method: 'POST',
           mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item)
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString()
         });
         
         await markAsSynced(item.id);
         successCount++;
       } catch (err) {
-        console.error("Lỗi khi đồng bộ ID:", item.id, err);
+        console.warn("Thử lại đồng bộ với Content-Type text/plain:", err);
+        try {
+          // Cách 2 dự phòng (Fallback): Gửi payload text/plain thô
+          await fetch(GOOGLE_SHEET_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(item)
+          });
+          await markAsSynced(item.id);
+          successCount++;
+        } catch (fallbackErr) {
+          console.error("Lỗi đồng bộ ID:", item.id, fallbackErr);
+        }
       }
     }
 
@@ -154,7 +189,6 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSurveyList();
 
     if (successCount > 0) {
-      // Bắn Notification khi có bản ghi đồng bộ thành công
       sendSyncNotification(successCount);
     }
 
@@ -225,10 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
   surveyForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // Lấy GPS Native
     const coords = await getCurrentLocationNative();
 
-    // Xử lý ảnh: Ưu tiên lấy ảnh chụp từ Capacitor Camera Native, nếu không có mới lấy ảnh chọn từ file HTML Input
     let finalPhotoBase64 = nativePhotoBase64;
     const photoFileInput = document.getElementById('photo');
     if (!finalPhotoBase64 && photoFileInput && photoFileInput.files[0]) {
@@ -252,24 +284,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     await saveSurvey(surveyData);
     
-    // Reset Form & Biến ảnh tạm
     surveyForm.reset();
     nativePhotoBase64 = null;
     const photoPreview = document.getElementById('photo-preview');
     if (photoPreview) photoPreview.classList.add('hidden');
 
-    // Đặt lại thời gian
     const resetDate = new Date();
     resetDate.setMinutes(resetDate.getMinutes() - resetDate.getTimezoneOffset());
     surveyDateInput.value = resetDate.toISOString().slice(0, 16);
 
     renderSurveyList();
 
-    // AUTO-SYNC: Kiểm tra nếu có mạng thì gửi luôn
-    const networkInfo = await Network.getStatus();
-    if (networkInfo.connected) {
-      syncToGoogleSheets(true);
-    }
+    // AUTO-SYNC:
+    syncToGoogleSheets(true);
   });
 
   // Khởi chạy hệ thống
