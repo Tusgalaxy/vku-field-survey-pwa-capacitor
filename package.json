@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/camera": "^8.2.4",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/geolocation": "^8.2.2",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/network": "^8.0.1"
+  },
+
+  "scripts": {
+    "build": "powershell -Command \"if (Test-Path www) { Remove-Item -Recurse -Force www }; New-Item -ItemType Directory -Path www; Copy-Item index.html, manifest.json, sw.js -Destination www/; Copy-Item css, js, icons -Recurse -Destination www/\"",
+    "sync": "npm run build && npx cap sync"
+  }
+}

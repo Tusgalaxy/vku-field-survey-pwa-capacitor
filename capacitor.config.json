@@ -1,0 +1,6 @@
+{
+  "appId": "com.example.app",
+  "appName": "VKU Survey",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
